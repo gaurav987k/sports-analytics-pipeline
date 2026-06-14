@@ -1,7 +1,7 @@
 # 🏏 End-to-End Sports Analytics Data Pipeline
 
 <p align="center">
-  <img resources/project_architecture.png>
+  <img src="resources/project_architecture.png" alt="Pipeline Architecture" width="100%"/>
 </p>
 
 <p align="center">
@@ -69,7 +69,7 @@ A **parent FMCG company** has acquired **Sports Bar**, a sports equipment e-comm
 ## 🏗️ Architecture
 
 <p align="center">
-  <img src="docs/images/architecture.png" alt="System Architecture" width="90%"/>
+  <img src="resources/diagram-export-6-14-2026-4_21_18-PM.png" alt="System Architecture" width="90%"/>
 </p>
 
 The pipeline follows a **6-stage Medallion Architecture** with multi-tenant design:
@@ -273,7 +273,7 @@ For full ADR documentation, see [`architecture/design_decisions.md`](architectur
 ## 📊 Dashboard & Business Impact
 
 <p align="center">
-  <img src="docs/images/dashboard_screenshot.png" alt="Power BI Dashboard" width="100%"/>
+  <img src="2_dashboarding/Screenshot 2026-06-14 145859.png" alt="Power BI Dashboard" width="100%"/>
 </p>
 
 **Live Power BI dashboard** connected directly to `fmcg.gold.*` via Databricks SQL connector:
@@ -402,8 +402,8 @@ Run `sql/02_create_parent_gold_tables.sql` to create the parent-level Delta tabl
 **Gaurav Dinesh Kanojiya**
 B.E. Electronics & Telecommunication Engineering — RGIT Mumbai, 2026
 
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://linkedin.com/in/gaurav-kanojiya)
-[![GitHub](https://img.shields.io/badge/GitHub-Follow-black?style=flat&logo=github)](https://github.com/gaurav-kanojiya)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat&logo=linkedin)](https://www.linkedin.com/in/gauravkanojiya03/?lipi=urn%3Ali%3Apage%3Ad_flagship3_profile_view_base_contact_details%3BtaeFudYkRsqI6DrsI%2BSAew%3D%3D)
+[![GitHub](https://img.shields.io/badge/GitHub-Follow-black?style=flat&logo=github)](https://github.com/gaurav987k)
 
 *This project was built to demonstrate production-grade data engineering skills: Medallion Architecture, PySpark transformations, Delta Lake patterns, multi-tenant design, and cloud-native orchestration on Databricks + AWS.*
 
