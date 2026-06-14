@@ -1,7 +1,7 @@
 # 🏏 End-to-End Sports Analytics Data Pipeline
 
 <p align="center">
-  <img src="docs/images/architecture.png" alt="Pipeline Architecture" width="100%"/>
+  <img resources/project_architecture.png>
 </p>
 
 <p align="center">
