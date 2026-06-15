@@ -1,4 +1,4 @@
-# 🏏 End-to-End Sports Analytics Data Pipeline
+# 🏏 End-to-End Data Engineering Project — FMCG Domain (Databricks)
 
 <p align="center">
   <img src="resources/project_architecture.png" alt="Pipeline Architecture" width="100%"/>
@@ -37,9 +37,9 @@
 
 ## 🎯 Project Overview
 
-A **production-grade, end-to-end data engineering pipeline** built for **Sports Bar**, a sports equipment e-commerce company operating as a child subsidiary of a larger FMCG parent organization.
+A **production-grade, end-to-end data engineering pipeline** built for **Sports Bar**, a fast-growing startup in the **energy bars and athletic nutrition space**, recently acquired by **Atlon** — a leading manufacturer of sports equipment operating across several countries.
 
-The pipeline ingests raw transactional data (orders, customers, products, pricing) from **AWS S3**, processes it through **Bronze → Silver → Gold** layers using **PySpark on Databricks**, and merges analytics-ready data into a **shared parent company Gold layer** via a **multi-tenant architecture**. The final output powers a **live Power BI dashboard** with Databricks Genie AI integration for natural language querying.
+The pipeline ingests raw transactional data (orders, customers, products, pricing) from **AWS S3**, processes it through **Bronze → Silver → Gold** layers using **PySpark on Databricks**, and merges analytics-ready data into a **shared parent company Gold layer** via a **multi-tenant architecture**. The final output powers a **live Databricks dashboard** with Databricks Genie AI integration for natural language querying.
 
 ### 📊 Pipeline Output — Business Metrics Tracked
 
@@ -54,15 +54,17 @@ The pipeline ingests raw transactional data (orders, customers, products, pricin
 
 ## 💼 Business Problem
 
-A **parent FMCG company** has acquired **Sports Bar**, a sports equipment e-commerce brand. The parent already has an analytics Gold layer. The challenge:
+**Atlon**, a leading manufacturer of sports equipment, acquired **Sports Bar**, a fast-growing startup in the energy bars and athletic nutrition space. Atlon already had a mature, well-established analytics Gold layer. The challenge:
 
-> *How do you onboard a new child company into an existing analytics ecosystem — with different data schemas, messy data quality, and daily-vs-monthly grain mismatch — without disrupting the parent's reporting?*
+> *How do you onboard a new child company into an existing analytics ecosystem — with different data schemas, messy data quality, missing months of data, and daily-vs-monthly grain mismatch — without disrupting the parent's reporting?*
+
+Sports Bar's data was scattered across spreadsheets, cloud drives, and hastily built APIs. Their data formats didn't match Atlon's. Reporting cycles didn't align. Some months of Sports Bar data simply didn't exist — lost during their hyper-growth phase.
 
 **Solution:** Build an isolated Bronze → Silver → Gold pipeline for Sports Bar that:
 1. Cleans and standardizes child data independently (no parent dependency)
 2. Generates consistent surrogate keys that join safely with the parent schema
 3. Aggregates child daily data to monthly grain at the merge step
-4. Merges into the parent Gold layer via **Delta MERGE (upsert)** — idempotent and safe
+4. Merges into the Atlon Gold layer via **Delta MERGE (upsert)** — idempotent and safe
 
 ---
 
@@ -112,11 +114,13 @@ S3 (RAW Data)
     │
     ▼
 [Serving Layer]
-    Power BI Dashboard  (live KPIs, charts, interactive filters)
+    Databricks Dashboard  (live KPIs, charts, interactive filters)
     Databricks Genie AI (natural language querying)
 ```
 
-**Key Design Principle:** Child companies maintain full data autonomy at Bronze and Silver layers. The merge into the parent Gold layer only happens after data has been cleaned, validated, and standardized — ensuring the parent layer always contains trustworthy, analytics-ready data.
+**Key Design Principle:** Child companies maintain full data autonomy at Bronze and Silver layers. The merge into the Atlon Gold layer only happens after data has been cleaned, validated, and standardized — ensuring the parent layer always contains trustworthy, analytics-ready data.
+
+> **Note:** Atlon's Bronze and Silver pipeline is assumed to already exist and is out of scope for this project. Historical data for Atlon is loaded directly into the Gold layer from CSV. This project focuses entirely on building Sports Bar's pipeline and merging it into the shared Gold layer.
 
 ---
 
@@ -130,7 +134,7 @@ S3 (RAW Data)
 | **AWS S3** | Raw data storage — landing zone for CSVs, archive for processed files |
 | **Unity Catalog** | Centralized data governance — multi-tenant catalog with namespace isolation |
 | **Lakeflow Jobs** | Pipeline orchestration — scheduling and dependency management across layers |
-| **Power BI** | Business intelligence serving layer — live KPIs, charts, interactive filters |
+| **Databricks Dashboard** | Business intelligence serving layer — live KPIs, charts, interactive filters |
 | **Databricks Genie** | AI-powered natural language querying on Gold layer data |
 
 ---
@@ -144,7 +148,8 @@ S3 (RAW Data)
 | **Source** | `s3://sportsbar-final/<entity>/landing/*.csv` |
 | **Read** | `spark.read.csv` with `inferSchema=True` |
 | **Metadata** | `read_timestamp`, `file_name`, `file_size` via `_metadata` |
-| **Write** | Append to `fmcg.bronze.<entity>` Delta table |
+| **Write (Dimensions)** | Overwrite `fmcg.bronze.<entity>` Delta table |
+| **Write (Fact — Orders)** | Append to `fmcg.bronze.orders` Delta table |
 | **CDF** | `delta.enableChangeDataFeed = true` on all Bronze tables |
 | **Archive** | Files moved `landing/` → `processed/` via `dbutils.fs.mv` |
 
@@ -160,23 +165,26 @@ S3 (RAW Data)
 - Delta MERGE upsert into Silver orders
 
 **Customers:**
-- Duplicate `customer_id` rows dropped
+- Duplicate `customer_id` rows dropped (39 raw → 35 after dedup)
 - Whitespace trimmed from `customer_name`
 - 7 city typos corrected: `Bengaluruu → Bengaluru`, `NewDheli → New Delhi`, `Hyderbad → Hyderabad`, etc.
 - Title-case fix via `F.initcap`
 - 4 customers with missing cities manually confirmed with business team and patched
 - Derived columns: `market = "India"`, `platform = "Sports Bar"`, `channel = "Acquisition"`
+- `customer_name` concatenated with `city` to disambiguate customers across locations
 
 **Products:**
+- Deduplication on `product_id` (2 duplicate records dropped)
 - Title-case fix on `category`
 - Spelling fix: `Protien → Protein` via `regexp_replace` (case-insensitive)
+- Non-numeric `product_id` values replaced with fallback `"999"` (per business rule: valid product IDs must be numeric)
 - `division` derived from category (6 business categories → 6 division labels)
 - `variant` extracted from `product_name` via regex `\((.*?)\)` (text inside parentheses)
-- `product_code` = `SHA-256(product_name)` — deterministic, collision-resistant surrogate key
+- `product_code` = `SHA-256(product_name)` — deterministic, collision-resistant surrogate key (replaces unreliable `product_id`)
 
 **Gross Price:**
 - `month` parsed from 4 date formats via `F.coalesce + F.try_to_date`
-- Negative `gross_price` made positive; non-numeric → `0`
+- Negative `gross_price` made positive via `× -1`; non-numeric (e.g. "unknown") → `0`
 - Joined with Silver products to attach `product_code`
 - Price aggregated at yearly grain via `Window(partitionBy product_code + year, orderBy gross_price DESC)`
 - Latest non-zero price selected per product per year
@@ -241,7 +249,7 @@ sports-analytics-pipeline/
 └── docs/
     └── images/
         ├── architecture.png            # System architecture diagram
-        └── dashboard_screenshot.png    # Power BI dashboard screenshot
+        └── dashboard_screenshot.png    # Databricks dashboard screenshot
 ```
 
 ---
@@ -249,7 +257,7 @@ sports-analytics-pipeline/
 ## ⚙️ Key Engineering Decisions
 
 ### 1. SHA-256 as Product Surrogate Key
-Raw `product_id` from source is unreliable (non-numeric, missing). `SHA-256(product_name)` provides a **deterministic, collision-resistant surrogate key** that survives source system issues and works consistently across all child companies.
+Raw `product_id` from Sports Bar's source is unreliable — it contained non-numeric and invalid values, with invalid entries replaced by a fallback of `"999"`. `SHA-256(product_name)` provides a **deterministic, collision-resistant surrogate key** that survives source system issues, avoids primary key collisions from fallback values, and works consistently across all child companies.
 
 ### 2. Delta MERGE (Upsert) Everywhere
 Safer than `overwrite` for production pipelines. Handles late-arriving data gracefully, ensures **idempotency** without data loss, and works atomically — a failed mid-run MERGE doesn't leave the table in a broken state.
@@ -258,13 +266,13 @@ Safer than `overwrite` for production pipelines. Handles late-arriving data grac
 Only newly landed files are written to a `staging_<table>` Delta table. Transformations operate on this tiny staging dataset instead of reprocessing the full Bronze/Silver history — **reducing compute cost on every incremental run**.
 
 ### 4. Monthly Grain Aggregation at Merge Step
-Parent company needs cross-brand monthly reporting; child data is daily. Aggregation happens **at the merge step, not at storage** — keeping child data granular and auditable while feeding the parent layer the right grain.
+Atlon needs cross-brand monthly reporting; Sports Bar's child data is at daily granularity. Aggregation happens **at the merge step, not at storage** — keeping child data granular and auditable while feeding the parent layer the correct grain. All December daily records are summed per `product_code + customer_code` before upserting into the parent `fact_orders` table.
 
 ### 5. Change Data Feed (CDF) Enabled
-All Delta tables have CDF enabled, allowing downstream consumers to track **row-level inserts, updates, and deletes** — critical for audit trails, CDC pipelines, and incremental Power BI refresh.
+All Delta tables have CDF enabled, allowing downstream consumers to track **row-level inserts, updates, and deletes** — critical for audit trails, CDC pipelines, and incremental dashboard refresh.
 
 ### 6. Fallback Sentinel Values for Bad Data
-`customer_id` → `"999999"`, `gross_price` → `0` for non-numeric inputs. **Keeps the pipeline running without data loss**; bad records are isolable via sentinel values for later review.
+`customer_id` → `"999999"`, `product_id` → `"999"`, and `gross_price` → `0` for non-numeric or invalid inputs. **Keeps the pipeline running without data loss**; bad records are isolable via sentinel values for later review.
 
 For full ADR documentation, see [`architecture/design_decisions.md`](architecture/design_decisions.md).
 
@@ -276,7 +284,7 @@ For full ADR documentation, see [`architecture/design_decisions.md`](architectur
   <img src="2_dashboarding/Screenshot 2026-06-14 145859.png" alt="Power BI Dashboard" width="100%"/>
 </p>
 
-**Live Power BI dashboard** connected directly to `fmcg.gold.*` via Databricks SQL connector:
+**Live Databricks dashboard** connected directly to `fmcg.gold.*` via a denormalized Gold view joining all fact and dimension tables:
 
 | KPI | Value |
 |---|---|
@@ -289,22 +297,21 @@ For full ADR documentation, see [`architecture/design_decisions.md`](architectur
 - Top 10 Categories by Revenue (donut chart)
 - Top 10 Customers by Revenue (bar chart)
 - Top 10 Products by Revenue (horizontal bar)
-- Interactive filters: Market, Category, Year
+- Interactive filters: Market, Category, Year, Quarter, Month, Channel
 - **Databricks Genie AI** — natural language querying for non-technical stakeholders
 
 **Top Revenue Customers:** FitnessWorld, FastTrack Sports, Fitness Mania, Active Sport Shop, SportsMart
 
-**Top Revenue Products:** PX Grip Cricket Batting Gloves, WL Hex Dumbbell, NX Pro Cricket Leg Guards, RX Sprint Football Boots
+**Top Revenue Products (Atlon):** PX Grip Cricket Batting Gloves, WL Hex Dumbbell, NX Pro Cricket Leg Guards, RX Sprint Football Boots
 
 ---
 
 ## 🚀 How to Run
 
 ### Prerequisites
-- Databricks workspace with Unity Catalog enabled
-- AWS S3 bucket with source CSV files at `s3://sportsbar-final/<entity>/landing/`
+- Databricks workspace (Free Edition is sufficient) with Unity Catalog enabled
+- AWS S3 bucket with source CSV files at `s3://<your-bucket>/<entity>/landing/`
 - Databricks cluster (Runtime 14.x+ recommended)
-- Power BI Desktop (for dashboard)
 
 ### Step 1: Clone the Repository
 
@@ -331,7 +338,7 @@ CREATE SCHEMA IF NOT EXISTS fmcg.gold;
 
 ### Step 4: Create Parent Gold Tables
 
-Run `sql/02_create_parent_gold_tables.sql` to create the parent-level Delta tables.
+Run `sql/02_create_parent_gold_tables.sql` to create the Atlon parent-level Delta tables and manually import the parent company's historical CSV data into the Gold layer.
 
 ### Step 5: Run Setup Notebooks
 
@@ -351,36 +358,43 @@ Run `sql/02_create_parent_gold_tables.sql` to create the parent-level Delta tabl
 
 ### Step 7: Run Fact Table Pipeline
 
-**First run (full historical load):**
+**First run (full historical load — July to November):**
 ```
 3_fact_orders/1_full_load_fact.ipynb
 ```
 
-**Subsequent runs (incremental):**
+**Subsequent runs (daily incremental — December onwards):**
 ```
 3_fact_orders/2_incremental_load_fact.ipynb
 ```
 
-### Step 8: Connect Power BI
+### Step 8: Set Up Orchestration (Lakeflow Jobs)
 
-1. Open Power BI Desktop → Get Data → Databricks
-2. Server: `<your-databricks-workspace>.azuredatabricks.net`
-3. HTTP Path: `<SQL Warehouse HTTP Path>`
-4. Connect to `fmcg.gold.*` tables
-5. Build your visuals or import the provided `.pbix` file
+1. Go to **Jobs and Pipelines → Create Job**
+2. Add tasks in this dependency order:
+   - `customers_data_processing` → `products_data_processing` → `pricing_data_processing` → `incremental_load_fact`
+3. Schedule at your required frequency (e.g., daily at 11 PM via Unix cron)
+
+### Step 9: Connect Databricks Dashboard
+
+1. Create a dashboard in Databricks
+2. Add a data source from the `fmcg.gold` denormalized view
+3. Build KPI counters, bar charts, donut charts with year/quarter/month filters
+4. Enable **Genie AI** on the Gold view for natural language querying
 
 ---
 
 ## 🧠 What I Learned
 
 - Designing **multi-tenant Medallion Architecture** from scratch with Unity Catalog isolation
-- Handling real-world **data quality issues**: typos, mixed date formats, negative prices, missing values
+- Handling real-world **data quality issues**: typos, mixed date formats, negative prices, missing values, invalid IDs
 - **Incremental vs. Full load** strategy trade-offs and when to use each in production
 - Using **Delta MERGE** for safe, idempotent upserts at every pipeline layer
 - Solving **aggregation grain mismatch** between child (daily) and parent (monthly) data
 - The **staging table pattern** for incremental compute efficiency and cost savings
-- **SHA-256 surrogate keys** as a reliable alternative to unreliable source IDs
+- **SHA-256 surrogate keys** as a reliable alternative to unreliable, non-numeric source IDs
 - Enabling **Change Data Feed** for downstream CDC readiness
+- Building a **denormalized Gold view** to power BI dashboards without multi-table joins
 
 ---
 
